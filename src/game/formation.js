@@ -28,6 +28,16 @@ export function stepFormation(session, dt, input) {
       nitro: false,
     };
   }
+  // Keep the qualified order during warm-up: the driver follows the car ahead.
+  const playerIndex = S.entries.indexOf(p);
+  const preceding = playerIndex > 0 ? S.entries[playerIndex - 1] : null;
+  if (preceding?.bot && !docking) {
+    const gap = preceding.bot.progress - car.progress;
+    const safeSpeed = Math.sqrt(preceding.bot.v ** 2 + 8 * Math.max(0, gap - 12));
+    if (gap < 9 || speedOf(car) > safeSpeed) {
+      control = { ...control, gas: false, brake: true };
+    }
+  }
   car.boostOn = false;
   const events = stepCar(car, control, dt, tr, {
     assist: S.assist,

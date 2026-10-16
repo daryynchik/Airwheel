@@ -64,6 +64,7 @@ assert.equal(S.player.penalty, 0);
 let formationSteps = 0;
 while (S.state === "formation" && formationSteps++ < 120 * 230) {
   S.step(STEP, autopilotInput(S.playerCar, tr, prof, spec, { pace: 0.8 }));
+  assert.ok(S.playerCar.progress < S.entries[4].bot.progress, "formation order is maintained");
   assert.equal(S.time, 0);
   assert.equal(S.player.timing.lapTimes.length, 0);
 }
