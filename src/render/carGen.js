@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-export const MAT = ['paint', 'carbon', 'glass', 'black', 'chrome', 'rubber', 'rim', 'disc', 'caliper', 'headlight', 'taillight', 'rainlight', 'interior', 'helmet', 'accent', 'grille'];
+export const MAT = ['paint', 'carbon', 'glass', 'black', 'chrome', 'rubber', 'rim', 'disc', 'caliper', 'headlight', 'taillight', 'rainlight', 'interior', 'helmet', 'accent', 'grille', 'tyreStripe'];
 
 const smooth = (a, b, x) => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -72,7 +72,8 @@ function loftSym(sections, matOf, { capEnds = true } = {}) {
       const zm = (sections[k].z + sections[k + 1].z) / 2;
       const jm = (j + 0.5) / M;
       const px = (pos[a * 3] + pos[d * 3]) / 2, py = (pos[a * 3 + 1] + pos[d * 3 + 1]) / 2;
-      quad(matOf(zm, jm, px, py), a, b, c, d);
+      const mat = matOf(zm, jm, px, py);
+      if (mat != null) quad(mat, a, b, c, d);
     }
   }
   if (capEnds) {
@@ -200,6 +201,13 @@ function wheelParts(R, W, { lod = 0, spokes = 5, rimR = 0.68, f1 = false } = {})
     [rr + (R - rr) * 0.25, hw],
     [rr * 0.99, hw * 0.92],
   ];
+  if (f1 && lod === 0) {
+    for (const side of [-1, 1]) {
+      const ring = new THREE.TorusGeometry(R * 0.82, 0.008, 5, 48);
+      ring.rotateY(Math.PI / 2); ring.translate(side * hw * .99, 0, 0);
+      spin.push(part(ring, 'tyreStripe'));
+    }
+  }
   spin.push(revolveX('rubber', lod === 2 ? [tireProfile[0], tireProfile[3], tireProfile[4], tireProfile[7]] : tireProfile, seg));
   if (lod === 2) {
     spin.push(cyl('rim', rr, rr, 0.02, seg, hw * 0.55, 0, 0, 'x'));
@@ -375,6 +383,18 @@ function gt3Details(spec, B, lod) {
     P.push(tube('interior', [0.55, 0.6, -0.6], [0.55, 1.12, -0.5], 0.025), tube('interior', [-0.55, 0.6, -0.6], [-0.55, 1.12, -0.5], 0.025));
     P.push(tube('interior', [0.55, 1.12, -0.5], [-0.55, 1.12, -0.5], 0.025));
     P.push(cyl('black', 0.16, 0.16, 0.03, 16, 0.3, 0.86, 0.22, 'z'));
+    // Seat, driver shoulders, steering wheel and dark visor below the halo.
+    P.push(bx('interior', .39, .13, .65, 0, .44, -.08));
+    P.push(bx('helmet', .30, .15, .24, 0, .65, -.22));
+    for (const side of [-1,1]) {
+      P.push(tube('helmet',[side*.14,.67,-.15],[side*.18,.62,.1],.055,8));
+      P.push(tube('black',[side*.18,.62,.1],[side*.12,.68,.2],.045,8));
+      P.push(bx('black',.20,.10,.12,side*.52,.38,zf-.12)); // brake ducts
+      for(let k=0;k<6;k++) P.push(bx('black',.18,.012,.045,side*.51,.55-k*.01,-.55-k*.09,0,.12*side,0));
+    }
+    P.push(bx('black',.31,.11,.035,0,.69,.22,-.2));
+    const visor = new THREE.SphereGeometry(.153,16,6,0,Math.PI,Math.PI*.32,Math.PI*.28);
+    visor.translate(0,.84,-.2);P.push(part(visor,'glass'));
     const helm = new THREE.SphereGeometry(0.14, 16, 12);
     helm.translate(0.3, 1.0, -0.38);
     P.push(part(helm, 'helmet'));
@@ -395,7 +415,7 @@ function f1Body(spec, lod) {
   const Z0 = -2.35, Z1 = 2.72;
   const hw = keys([[-2.35, 0.14], [-1.9, 0.2], [-1.2, 0.3], [-0.6, 0.36], [0.0, 0.38], [0.6, 0.34], [1.0, 0.26], [1.6, 0.16], [2.3, 0.09], [2.72, 0.05]]);
   const yb = keys([[-2.35, 0.2], [-2.0, 0.12], [1.2, 0.1], [2.0, 0.16], [2.72, 0.17]]);
-  const yt = keys([[-2.35, 0.45], [-1.8, 0.62], [-1.0, 0.82], [-0.45, 0.96], [-0.25, 0.86], [0.1, 0.7], [0.6, 0.66], [1.2, 0.58], [1.9, 0.42], [2.72, 0.24]]);
+  const yt = keys([[-2.35, 0.35], [-1.8, 0.52], [-1.0, 0.82], [-0.55, 1.02], [-0.35, 0.76], [0.1, 0.69], [0.6, 0.61], [1.2, 0.50], [1.9, 0.32], [2.72, 0.22]]);
   const sections = [];
   for (let k = 0; k < nS; k++) {
     const z = Z0 + ((Z1 - Z0) * k) / (nS - 1);
@@ -418,7 +438,7 @@ function f1Body(spec, lod) {
     if (cap) return 'carbon';
     const ring = Math.abs(f - 0.5) * 2;
     if (ring > 0.88) return 'carbon';
-    if (z > -0.5 && z < 0.4 && ring < 0.25) return 'black'; // кокпит
+    if (z > -0.48 && z < 0.34 && Math.abs(x) < 0.25 && y > 0.55) return null; // open cockpit
     return 'paint';
   };
   const body = loftSym(sections, matOf);
@@ -448,7 +468,12 @@ function f1Details(spec, B, lod) {
   const podGeo = loftSym(pod.map((s) => ({ z: s.z, pts: [[0, s.pts[0][1]], ...s.pts, [0, s.pts[s.pts.length - 1][1]]] })), (z, f, x, y, cap) => (cap && z > 0 ? 'black' : 'paint'));
   P.push(part(podGeo, 'paint'));
   // днище с крылышками, диффузор
-  P.push(bx('carbon', 1.42, 0.03, 3.4, 0, 0.06, -0.45));
+  const floorShape = new THREE.Shape();
+  floorShape.moveTo(-.35,1.45);floorShape.lineTo(-.82,.65);floorShape.lineTo(-.82,-1.05);
+  floorShape.lineTo(-.48,-2.48);floorShape.lineTo(.48,-2.48);floorShape.lineTo(.82,-1.05);
+  floorShape.lineTo(.82,.65);floorShape.lineTo(.35,1.45);floorShape.closePath();
+  const floor = new THREE.ExtrudeGeometry(floorShape,{depth:.035,bevelEnabled:false});
+  floor.rotateX(Math.PI/2);floor.translate(0,.10,0);P.push(part(floor,'carbon'));
   P.push(...both(bx('carbon', 0.04, 0.12, 2.6, 0.71, 0.1, -0.45)));
   for (const x of [-0.45, -0.15, 0.15, 0.45]) P.push(bx('carbon', 0.02, 0.24, 0.5, x, 0.18, -2.3, -0.45));
   P.push(bx('carbon', 1.0, 0.02, 0.55, 0, 0.2, -2.3, -0.45));
@@ -456,14 +481,15 @@ function f1Details(spec, B, lod) {
   P.push(wing('carbon', 1.95, 0.32, 0.1, 0, 0.1, 2.58, 0.05));
   if (lod === 0) {
     P.push(wing('accent', 1.7, 0.18, 0.1, 0, 0.17, 2.48, -0.3));
-    P.push(wing('carbon', 1.55, 0.13, 0.1, 0, 0.24, 2.4, -0.55));
+    P.push(wing('carbon', 1.55, 0.13, 0.045, 0, 0.24, 2.4, -0.55));
+    P.push(wing('paint', 1.4, 0.12, 0.035, 0, 0.29, 2.34, -.6));
   }
   P.push(...both(bx('accent', 0.03, 0.28, 0.62, 0.98, 0.2, 2.52)));
   P.push(...both(bx('carbon', 0.02, 0.12, 0.3, 0.22, 0.17, 2.55)));
   // заднее антикрыло: основной + DRS-закрылок, торцы, пилон, балка
-  P.push(wing('carbon', 1.0, 0.3, 0.12, 0, 0.84, -2.55, -0.12));
-  P.push(wing('paint', 1.0, 0.2, 0.1, 0, 0.98, -2.66, -0.6));
-  P.push(...both(bx('accent', 0.025, 0.66, 0.72, 0.51, 0.8, -2.56)));
+  P.push(wing('carbon', 1.16, 0.38, 0.065, 0, 0.88, -2.55, -0.12));
+  P.push(wing('paint', 1.16, 0.24, 0.045, 0, 1.03, -2.66, -0.48));
+  P.push(...both(bx('accent', 0.025, 0.60, 0.70, 0.59, 0.82, -2.56)));
   P.push(bx('carbon', 0.05, 0.45, 0.12, 0, 0.6, -2.45, 0.2));
   if (lod === 0) P.push(wing('carbon', 0.8, 0.16, 0.12, 0, 0.42, -2.42, -0.2));
   // плавник, воздухозаборник над головой, halo, зеркала
@@ -513,6 +539,7 @@ export function makePlaceholderMaterials() {
     chrome: [0xe0e0e0, 0.1, 1],
     rubber: [0x161616, 0.85, 0],
     rim: [0x9aa1aa, 0.3, 0.8],
+    tyreStripe: [0xffd23f, 0.8, 0],
     disc: [0x5b5f66, 0.4, 0.8],
     caliper: [0xd4202a, 0.35, 0.2],
     headlight: [0xffffff, 0.1, 0],

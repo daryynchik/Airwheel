@@ -272,6 +272,7 @@ export class PlayerPit {
             const from = car.tire?.compound;
             const to = this.request || from || 'medium';
             this.serviceTime = 2.5 + Math.random() * 0.9 + (COMPOUNDS[from]?.rain !== COMPOUNDS[to]?.rain ? 0.5 : 0);
+            if ((car.damage || 0) > 0.3) this.serviceTime += 5; // front wing replacement
             this.compound = to;
             this.emit({ type: 'pit-stop', compound: to, duration: this.serviceTime });
           }
@@ -287,6 +288,7 @@ export class PlayerPit {
         out.lift = smoothstep(0, 0.25, this.t) * (1 - smoothstep(this.serviceTime - 0.3, this.serviceTime, this.t));
         if (this.t >= this.serviceTime) {
           fitTires(car, this.compound);
+          car.damage = 0;
           this.phase = 'release';
           this.t = 0;
           this.emit({ type: 'pit-done', compound: this.compound });

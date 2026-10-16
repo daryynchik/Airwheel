@@ -72,8 +72,8 @@ export class Menu {
     this.root.innerHTML = `
       <div class="card menu">
         <div class="menu-head">
-          <h1>🏎️ AirWheel</h1>
-          <p class="lead">Гоночный уик-энд: квалификация → решётка → гонка. Руль — твои руки.</p>
+          <div class="paddock-tag">AIRWHEEL / GRAND PRIX</div><h1>В погоне за пределом.</h1>
+          <p class="lead">Гоночный уик-энд: квалификация → прогревочный круг → решётка → гонка.</p>
         </div>
         ${message ? `<p class="msg">${esc(message)}</p>` : ''}
         <h2>Трасса</h2>
@@ -97,7 +97,7 @@ export class Menu {
           </button>`,
           )
           .join('')}</div>
-        <h2>Окраска</h2>
+        <p class="sim-note">F1: V8 18 000 об/мин · температура каждого колеса · аэродинамика · прогревочный круг. За контакт со стеной нет штрафа по времени.</p><h2>Окраска</h2>
         <div class="liveries">${(this.h.liveries || [])
           .map(
             (L, k) => `<button class="livery ${Number(settings.livery ?? 0) === k ? 'on' : ''}" data-livery="${k}" title="${esc(L.name)}">
@@ -119,6 +119,7 @@ export class Menu {
           <button class="btn" id="mn-mp">👥 Мультиплеер</button>
           ${keyboard ? '<button class="btn" id="mn-cam">📷 Камера</button>' : '<button class="btn" id="mn-cal">Перекалибровать</button>'}
         </div>
+        <a class="asset-credits" href="./credits.html" target="_blank" rel="noopener">Авторы звука и данных трассы</a>
       </div>`;
     this.root.classList.remove('hidden');
     const q = (sel) => this.root.querySelector(sel);

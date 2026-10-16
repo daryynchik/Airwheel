@@ -191,6 +191,7 @@ export function buildCarModel(spec, { color = 0xd81e2a, livery = null, number = 
   const tail = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff1a12, emissiveIntensity: 0.8, roughness: 0.3 });
   const rain = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff1a12, emissiveIntensity: 0, roughness: 0.3 });
   const disc = new THREE.MeshStandardMaterial({ color: 0x5b5f66, roughness: 0.42, metalness: 0.85, emissive: 0xff5a10, emissiveIntensity: 0 });
+  const tyreStripe = new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: .8 });
   const helmet = new THREE.MeshPhysicalMaterial({ color: L.accent === '#121417' ? L.stripe : L.accent, roughness: 0.2, clearcoat: 1 });
   const byName = (name, lod) => {
     const lite = lod > 0;
@@ -203,6 +204,8 @@ export function buildCarModel(spec, { color = 0xd81e2a, livery = null, number = 
         return lite ? S.glassLite : S.glass;
       case 'rubber':
         return lite ? S.rubberLite : S.rubber;
+      case 'tyreStripe':
+        return tyreStripe;
       case 'rim':
         return f1 ? S.rim : S.rimSilver;
       case 'disc':
@@ -276,6 +279,7 @@ export function buildCarModel(spec, { color = 0xd81e2a, livery = null, number = 
     // обновление по состоянию: положение, крен/тангаж кузова, колёса, огни, тормозные диски.
     // env: { night, wet } — для огней и дождевого фонаря.
     update(state, alpha = 1, dt = 1 / 60, env = {}) {
+      if (state.tire) tyreStripe.color.set(state.tire.compound === 'soft' ? '#ff3b4d' : state.tire.compound === 'wet' ? '#3ba7ff' : '#ffd23f');
       const p = state.prev;
       const x = p ? p.x + (state.x - p.x) * alpha : state.x;
       const y = p ? p.y + (state.y - p.y) * alpha : state.y;
@@ -298,6 +302,7 @@ export function buildCarModel(spec, { color = 0xd81e2a, livery = null, number = 
           L2.chassis.position.y = heave;
         }
         for (const w of L2.ws) {
+          w.pivot.visible = !(state.pitProgress > 0.29 && state.pitProgress < 0.64);
           w.wheel.rotation.x = state.spin || 0;
           if (w.front) w.pivot.rotation.y = state.delta || 0;
         }
@@ -330,7 +335,7 @@ export function buildCarModel(spec, { color = 0xd81e2a, livery = null, number = 
     },
     dispose() {
       paint.map?.dispose();
-      for (const m of [paint, paintLite, accent, tail, rain, disc, helmet]) m.dispose();
+      for (const m of [paint, paintLite, accent, tail, rain, disc, helmet, tyreStripe]) m.dispose();
     },
   };
   model.setLodScale(1);

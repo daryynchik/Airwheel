@@ -1,6 +1,7 @@
 // Гонка: 12 машин (игрок + 11 ботов), решётка, огни старта, хронометраж всех машин,
 // позиции и разрывы, штрафы, погода и шины, пит-стопы, финиш и итоговый протокол с очками.
 // События наружу (звук, сообщения, HUD) — через колбэк onEvent({type, ...}).
+import { stepFormation } from './formation.js';
 import { createCar, stepCar, respawn, speedOf } from './physics.js';
 import { LapTiming } from './timing.js';
 import { updateBots, collidePlayer, botStartTires, obb, overlap, pushApart } from './bots.js';
@@ -8,7 +9,7 @@ import { createTire, updateTire, suggestCompound } from './tires.js';
 import { PlayerPit } from './pit.js';
 import { autopilotInput } from './autopilot.js';
 
-export const PENALTY = { wall: 2, cut: 3, jump: 5, reset: 2, pit: 3 };
+export const PENALTY = { wall: 0, cut: 3, jump: 5, reset: 2, pit: 3 };
 export const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 const WALL_PENALTY_SPEED = 7; // м/с скорости по нормали к стене — «удар», а не касание
 const STUCK_SEC = 4; // стоит вне трассы (< 5 км/ч) дольше — автоматический возврат со штрафом
@@ -99,6 +100,7 @@ export class RaceSession {
     });
     updateTire(car, dt, this.wetness);
     car.lift = pit.lift;
+    car.pitProgress = p.pit.phase === "service" ? pit.progress : -1;
     return events;
   }
 
@@ -156,6 +158,7 @@ export class RaceSession {
             color: who.color,
             remote: rc,
             grid: k + 1,
+            slot,
             timing: new LapTiming(tr.length, { overall: this.overall }),
           }),
         );
@@ -171,6 +174,7 @@ export class RaceSession {
             color: who.color,
             bot: who,
             grid: k + 1,
+            slot,
             timing: new LapTiming(tr.length, { overall: this.overall }),
           }),
         );
@@ -189,7 +193,10 @@ export class RaceSession {
     this.lights = 0;
     this.holdT = this.opts.holdT ?? 0.4 + Math.random() * 1.2; // пауза перед «огни погасли»
     this.jumped = false;
-    this.state = 'grid';
+    this.formationTime = 0;
+    this.formationRemaining = tr.length;
+    this.state = this.spec.id === 'f1' && this.opts.formation !== false && !this.remotes.length ? 'formation' : 'grid';
+    if (this.state === 'formation') this.emit({ type: 'formation-start' });
     this.lastPos = this.player.grid;
   }
 
@@ -227,7 +234,7 @@ export class RaceSession {
   }
 
   lapTimeOf(e) {
-    if (this.state === 'grid') return 0;
+    if (this.state === 'grid' || this.state === 'formation') return 0;
     return e.finished ? e.timing.lapTimes.at(-1)?.time ?? 0 : this.time - e.timing.lapStart;
   }
 
@@ -256,6 +263,7 @@ export class RaceSession {
   }
 
   step(dt, input) {
+    if (this.state === 'formation') return stepFormation(this, dt, input);
     if (this.state === 'grid') return this.stepGrid(dt, input);
     if (this.state !== 'race' && this.state !== 'finished') return;
     this.time += dt;
@@ -309,7 +317,7 @@ export class RaceSession {
   judge(e, events, dt) {
     e.wallCd = Math.max(0, e.wallCd - dt);
     for (const ev of events) {
-      if (ev.type === 'wall' && ev.speed > WALL_PENALTY_SPEED && e.wallCd <= 0) {
+      if (PENALTY.wall > 0 && ev.type === 'wall' && ev.speed > WALL_PENALTY_SPEED && e.wallCd <= 0) {
         e.wallCd = 2;
         this.addPenalty(e, PENALTY.wall, 'wall');
       }

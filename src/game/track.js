@@ -59,7 +59,13 @@ export class Track {
 
     // --- центральная линия ---
     const pts = def.points.map(([x, z]) => new Vector3(x, 0, z));
-    const curve = new CatmullRomCurve3(pts, true, 'centripetal');
+    let curve = new CatmullRomCurve3(pts, true, 'centripetal');
+    if (def.length) {
+      curve.arcLengthDivisions = pts.length * 80;
+      const scale = def.length / curve.getLength();
+      pts.forEach((p) => p.multiplyScalar(scale));
+      curve = new CatmullRomCurve3(pts, true, 'centripetal');
+    }
     curve.arcLengthDivisions = pts.length * 80;
     const approx = curve.getLength();
     const n = (this.n = Math.max(64, Math.round(approx / SAMPLE_M)));

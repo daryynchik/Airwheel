@@ -1,4 +1,5 @@
-// Звук целиком синтезируется через Web Audio API — никаких аудиофайлов.
+// Web Audio: licensed Ferrari F60 V8 sample layers plus synthesized effects.
+// Attribution and the share-alike audio licence: /credits.html, /audio/README.md.
 //  - двигатель: два осциллятора + шум через фильтр, частота — от оборотов и передачи;
 //    GT3 — низкий рык (субоктава), F1 — высокий визг (вторая гармоника и турбо-свист);
 //  - переключение передач (провал и «подхват» оборотов), визг тормозов при работе ABS,
@@ -124,6 +125,31 @@ export class AudioEngine {
     if (this.botPan) this.botGain.connect(this.botPan).connect(this.master);
     else this.botGain.connect(this.master);
     this.botOsc.start();
+    this.v8Voices = [];
+    this.v8Ready = false;
+    this.loadV8();
+  }
+
+  async loadV8() {
+    const c = this.ctx;
+    try {
+      const samples = await Promise.all(['v8-mid', 'v8-high'].map(async (name) => {
+        const response = await fetch(`${import.meta.env.BASE_URL}audio/${name}.wav`);
+        if (!response.ok) throw new Error(`V8 sample ${response.status}`);
+        return c.decodeAudioData(await response.arrayBuffer());
+      }));
+      samples.forEach((buffer, i) => {
+        const source = c.createBufferSource(); source.buffer = buffer; source.loop = true;
+        const gain = c.createGain(); gain.gain.value = 0;
+        const filter = c.createBiquadFilter(); filter.type = 'lowpass'; filter.Q.value = .65;
+        source.connect(filter).connect(gain).connect(this.master);
+        source.start(0, buffer.duration * i * .3);
+        this.v8Voices.push({ source, gain, filter, rpm: i ? 15900 : 14400 });
+      });
+      this.v8Ready = true;
+    } catch (error) {
+      console.warn('[airwheel] V8 sample unavailable; using synthesis', error.message);
+    }
   }
 
   setMuted(m) {
@@ -143,10 +169,20 @@ export class AudioEngine {
     const T = (param, v, tc = 0.05) => param.setTargetAtTime(v, t, tc);
     if (!s.active) {
       for (const g of [this.engGain.gain, this.wind.g.gain, this.squeal.g.gain, this.scrub.g.gain, this.rumble.gain, this.botGain.gain, this.turboGain.gain]) T(g, 0, 0.15);
+      for (const voice of this.v8Voices || []) T(voice.gain.gain, 0, .15);
       return;
     }
     const spec = s.spec;
     const f1 = spec.sound?.character === 'whine';
+    const sampled = f1 && this.v8Ready;
+    for (const voice of this.v8Voices || []) {
+      const rpm = Math.max(4000, s.rpm);
+      const high = Math.max(0, Math.min(1, (rpm - 12500) / 4000));
+      const mix = voice.rpm === 15900 ? Math.sin(high * Math.PI / 2) : Math.cos(high * Math.PI / 2);
+      T(voice.source.playbackRate, rpm / voice.rpm, .025);
+      T(voice.filter.frequency, 1400 + s.throttle * 7000 + rpm * .15, .05);
+      T(voice.gain.gain, sampled ? mix * (.18 + s.throttle * .42) * (s.gear !== this.lastGear ? .4 : 1) : 0, .025);
+    }
     const cyl = spec.sound?.cylinders ?? 6;
     const rpmK = (s.rpm - spec.rpm.idle) / (spec.rpm.max - spec.rpm.idle);
     // частота вспышек в цилиндрах: об/мин / 60 · (цилиндры / 2)
@@ -157,7 +193,7 @@ export class AudioEngine {
       T(this.osc2.frequency, fire * 2, 0.03);
       T(this.osc2Gain.gain, 0.45);
       T(this.turbo.frequency, 2600 + rpmK * 3400, 0.08);
-      T(this.turboGain.gain, 0.006 + s.throttle * 0.01 * rpmK);
+      T(this.turboGain.gain, 0); // naturally aspirated V8
     } else {
       this.osc2.type = 'square';
       T(this.osc2.frequency, fire / 2, 0.03);
@@ -166,13 +202,13 @@ export class AudioEngine {
     }
     T(this.rasp.frequency, fire * 3);
     T(this.engFilter.frequency, (f1 ? 700 : 350) + s.throttle * (f1 ? 3200 : 1800) + rpmK * (f1 ? 2500 : 1500), 0.06);
-    T(this.engGain.gain, 0.035 + s.throttle * 0.05 + rpmK * 0.03 + (s.boost ? 0.02 : 0), 0.05);
+    T(this.engGain.gain, (sampled ? .10 : 1) * (0.035 + s.throttle * 0.05 + rpmK * 0.03 + (s.boost ? 0.02 : 0)), 0.05);
     // переключение: короткий провал громкости
     if (s.gear !== this.lastGear) {
       if (s.gear > this.lastGear) {
         this.engGain.gain.cancelScheduledValues(t);
         this.engGain.gain.setValueAtTime(this.engGain.gain.value * 0.35, t);
-        this.engGain.gain.setTargetAtTime(0.035 + s.throttle * 0.05, t + 0.05, 0.04);
+        this.engGain.gain.setTargetAtTime((sampled ? .10 : 1) * (0.035 + s.throttle * 0.05), t + 0.05, 0.04);
         this.noiseBurst(0.06, 1800, 0.05, 'bandpass');
       }
       this.lastGear = s.gear;

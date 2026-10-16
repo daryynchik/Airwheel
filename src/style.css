@@ -538,3 +538,25 @@ html, body {
 .livery i { width: 100%; height: 26px; border-radius: 8px; }
 .livery.on { border-color: var(--accent); background: rgba(255, 204, 51, 0.1); }
 @media (max-height: 520px) { .livery i { height: 16px; } .livery { padding: 4px; } }
+
+/* Grand Prix presentation */
+.paddock-tag { font-size: 11px; font-weight: 800; letter-spacing: .24em; color: #ff5752; margin-bottom: 12px; }
+.menu-head h1 { font-size: clamp(30px, 5vw, 48px); letter-spacing: -.045em; line-height: 1.05; }
+.card.menu { background: linear-gradient(130deg,rgba(13,19,25,.97),rgba(19,25,33,.94)); border-top: 3px solid #ef443e; border-radius: 8px; }
+.menu h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .15em; margin-top: 22px; }
+.menu .choice { border-radius: 5px; }
+.menu .choice.on { border-color: #ef514b; background: rgba(239,81,75,.09); }
+.menu .choice.on .outline path { stroke: #ff6962; }
+.menu .choice .outline { height: 64px; }
+.menu .choice em { color: #b3c6cb; }
+.sim-note { font-size: 12px; color: #a4b7bd; padding: 11px 0; line-height: 1.7; border-bottom: 1px solid #ffffff14; }
+.asset-credits { display: inline-block; font-size: 11px; color: #879ba3; margin-top: 18px; }
+.hud-timing, .hud-race { border-top: 2px solid #ef514b; }
+.tyre .tt { white-space: nowrap; }
+
+.hud-thermal { position: absolute; left: 50%; bottom: 162px; transform: translateX(-50%); display: none; gap: 10px; background: #101820da; border-radius: 4px; padding: 5px 10px; font: 700 10px system-ui; }
+.hud-thermal.show { display: flex; }
+.hud-thermal .cold { color: #64c9ff; } .hud-thermal .hot { color: #ff7065; } .hud-thermal .ready { color: #79e7a2; }
+.hud-damage { display: none; position: absolute; left: 50%; bottom: 193px; transform: translateX(-50%); font-size: 11px; color: #ffb081; background: #261a12db; padding: 5px 10px; white-space: nowrap; }
+.hud-damage.show { display: block; }
+@media(max-width:600px) { .hud-thermal { bottom: 140px; gap: 6px; } .hud-damage { bottom: 166px; font-size: 9px; } }

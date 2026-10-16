@@ -18,7 +18,7 @@ export const COMPOUND_IDS = Object.keys(COMPOUNDS);
 
 export function createTire(compound = 'medium') {
   const C = COMPOUNDS[compound] || COMPOUNDS.medium;
-  return { compound: C.id, wear: 0, temp: C.tOpt - 12, grip: 1, laps: 0 };
+  return { compound: C.id, wear: 0, temp: 70, core: [70, 70, 70, 70], surface: [70, 70, 70, 70], brakes: [180, 180, 180, 180], grip: tempGrip(C.id, 70) * C.dry, laps: 0 };
 }
 
 // Сцепление состава при влажности w ∈ [0, 1] (без износа и температуры).
@@ -37,7 +37,8 @@ export function wearGrip(compound, wear) {
 export function tempGrip(compound, temp) {
   const C = COMPOUNDS[compound] || COMPOUNDS.medium;
   const k = Math.min(1, Math.max(0, (Math.abs(temp - C.tOpt) - 10) / 30));
-  return 1 - 0.12 * k * k;
+  const cold = temp < C.tOpt - 10;
+  return 1 - (cold ? 0.30 : 0.20) * k * k;
 }
 
 // Шаг шин игрока: износ от нагрузки на колёса и скорости, температура, итоговый tireGrip.
@@ -60,10 +61,26 @@ export function updateTire(car, dt, wetness = 0) {
   const dryAbuse = C.rain ? 1 + 2.4 * (1 - wetness) : 1 + 0.4 * wetness;
   const rate = ((0.25 + 0.75 * usage + slide * 0.8) * Math.min(1.4, v / 45) * dryAbuse) / C.life;
   T.wear = Math.min(1, T.wear + rate * dt);
-  // температура: нагрев от работы и скорости, вода охлаждает
-  const target = 52 + 58 * usage + 0.32 * v - 30 * wetness + (C.rain ? 22 * (1 - wetness) : 0) + slide * 25;
-  const k = target > T.temp ? 1 / 6 : 1 / 10;
-  T.temp += (target - T.temp) * Math.min(1, dt * k);
+  // Surface heats quickly with scrub; carcass warms slowly. Brakes transfer heat
+  // into the rim. Airflow and water cool the tyre, even on the grid.
+  T.core ??= [T.temp, T.temp, T.temp, T.temp];
+  T.surface ??= [...T.core];
+  T.brakes ??= [180, 180, 180, 180];
+  for (let i = 0; i < 4; i++) {
+    const w = car.wheels[i];
+    const cap = Math.max(1, w.mu * w.load);
+    const load = Math.min(1.3, Math.hypot(w.fx, w.fy) / cap);
+    const scrub = Math.min(1, Math.abs(w.slip) / 0.12);
+    const brakeTarget = 70 + (car.brake || 0) * Math.min(1, v / 40) * 900;
+    T.brakes[i] += (brakeTarget - T.brakes[i]) * Math.min(1, dt / (brakeTarget > T.brakes[i] ? 2 : 16));
+    const target = 28 + 24 * Math.min(1, v / 18) + 75 * load + 0.22 * v + 24 * scrub * Math.min(1, v / 15)
+      + (T.brakes[i] - 70) * 0.035 - 26 * wetness + (C.rain ? 22 * (1 - wetness) : 0);
+    T.surface[i] += (target - T.surface[i]) * Math.min(1, dt / (target > T.surface[i] ? 5 : 24));
+    T.core[i] += (T.surface[i] - T.core[i]) * Math.min(1, dt / 25);
+    w.tireTemp = 0.8 * T.core[i] + 0.2 * T.surface[i];
+    w.tempGrip = tempGrip(T.compound, w.tireTemp);
+  }
+  T.temp = car.wheels.reduce((sum, w) => sum + w.tireTemp, 0) / 4;
   T.grip = compoundGrip(T.compound, wetness) * wearGrip(T.compound, T.wear) * tempGrip(T.compound, T.temp);
   car.tireGrip = T.grip;
 }
@@ -71,7 +88,8 @@ export function updateTire(car, dt, wetness = 0) {
 // Поменять шины (пит-стоп): новый состав, износ 0, прогретые одеяла.
 export function fitTires(car, compound) {
   car.tire = createTire(compound);
-  car.tire.temp = COMPOUNDS[car.tire.compound].tOpt - 8;
+  car.tireGrip = car.tire.grip;
+  car.wheels?.forEach((w) => { w.tempGrip = tempGrip(car.tire.compound, 70); });
 }
 
 // Рекомендуемый состав для влажности и оставшихся кругов.

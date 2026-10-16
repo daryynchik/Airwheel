@@ -102,7 +102,7 @@ const PENALTY_TEXT = { wall: 'Удар о стену', cut: 'Срезка', jump
 const URLP = new URLSearchParams(location.search);
 const AUTOPILOT = URLP.has('autopilot');
 
-const settings = loadSettings({ trackId: TRACKS[0].id, cls: 'gt3', laps: 3, assist: 'medium', difficulty: 'medium', graphics: 'auto', weather: 'dry', tires: 'medium', name: 'Игрок', livery: 0 });
+const settings = loadSettings({ trackId: TRACKS[0].id, cls: 'f1', laps: 3, assist: 'medium', difficulty: 'medium', graphics: 'auto', weather: 'dry', tires: 'medium', name: 'Игрок', livery: 0 });
 if (!LIVERIES[settings.livery]) settings.livery = 0;
 PLAYER.color = LIVERIES[settings.livery].base;
 if (!['dry', 'rain', 'variable'].includes(settings.weather)) settings.weather = 'dry';
@@ -400,7 +400,7 @@ function startRace() {
   S.start(game.grid);
   world.pit?.setBoxes(S.entries.map((e) => e.color), S.entries.indexOf(S.player));
   beginSession(S);
-  rig.script = gridFlyover(S);
+  rig.script = S.state === 'formation' ? null : gridFlyover(S);
   app.state = 'race';
 }
 
@@ -444,6 +444,12 @@ function trackFlyover() {
 
 function onSessionEvent(e) {
   switch (e.type) {
+    case 'formation-start':
+      hud.message('Прогревочный круг · прогрей шины торможениями и плавными перекладками', 'info', 8);
+      break;
+    case 'formation-end':
+      hud.message('На решётке · удерживай тормоз до погасания огней', 'info', 5);
+      break;
     case 'light':
       hud.setLights(e.n);
       audio.countdownBeep(false);
@@ -851,7 +857,7 @@ function mpStartRace(m) {
   showBots(true);
   world.pit?.setBoxes(S.entries.map((e) => e.color), S.entries.indexOf(S.player));
   beginSession(S);
-  rig.script = gridFlyover(S);
+  rig.script = S.state === 'formation' ? null : gridFlyover(S);
   app.state = 'race';
   app.format = 'race';
   mp.inRace = true;
@@ -1310,7 +1316,7 @@ function updateHud(S, car, input, dt) {
   hud.update({
     ...common,
     lapTime: S.lapTimeOf(p),
-    session: S.state === 'grid' ? 'Старт' : 'Гонка',
+    session: S.state === 'formation' ? `Прогрев · ${Math.ceil(S.formationRemaining)} м` : S.state === 'grid' ? 'Старт' : 'Гонка',
     pos: S.positionOf(p),
     total: S.entries.length,
     lap: p.timing.lap,
@@ -1358,8 +1364,8 @@ function weatherView(S) {
 function pitView(S) {
   if (!S?.player?.pit || !(app.state === 'race' || app.state === 'quali' || app.state === 'paused')) return { service: [] };
   const pp = S.player.pit;
-  const service = [{ box: pp.box, active: pp.phase === 'service' || pp.phase === 'release' }];
-  if (S.bots && app.state !== 'quali') for (const b of S.bots) if (b.pit?.phase === 'service') service.push({ box: b.pit.box, active: true });
+  const service = [{ box: pp.box, active: pp.phase === 'service' || pp.phase === 'release' || (pp.phase === 'lane' && Math.abs(S.track.pit.rel(S.player.car.s) - S.track.pit.boxRel(pp.box)) < 35), progress: pp.phase === 'release' ? 1 : pp.phase === 'service' ? S.player.pitOut?.progress ?? 0 : -1, car: pp.phase === 'service' || pp.phase === 'release' ? S.player.car : null }];
+  if (S.bots && app.state !== 'quali') for (const b of S.bots) if (b.pit?.phase === 'service') service.push({ box: b.pit.box, active: true, progress: Math.min(1, (b.pit.t || 0) / (b.pit.duration || 3)), car: b });
   return { service, red: pp.phase === 'service' };
 }
 
@@ -1370,6 +1376,7 @@ function hudExtras(S, car) {
   const kb = app.mode === 'keyboard';
   hud.extras({
     tire: car.tire,
+    damage: car.damage || 0,
     weather: S.weather ? { ...S.weather.label(S.clock), wet: S.wetness } : null,
     pit: pit
       ? {

@@ -75,6 +75,9 @@ export class Hud {
     this.tyreBar = el('b', '', el('div', 'bar', tw));
     this.tyreTemp = el('span', 'tt', this.tyreEl);
     this.wxEl = el('span', 'wx', this.tyreEl);
+    this.thermalEl = el('div', 'hud-thermal', root);
+    this.wheelTemps = ['ПЛ','ПП','ЗЛ','ЗП'].map((name) => el('span', '', this.thermalEl, name));
+    this.damageEl = el('div', 'hud-damage', root);
     // окно выбора шин перед пит-лейном и кольцо пит-стопа
     this.pitEl = el('div', 'hud-pit', root);
     this.pitHead = el('div', 'ph', this.pitEl);
@@ -211,10 +214,19 @@ export class Hud {
         this.tyreBar.style.width = w;
         this.tyreBar.style.background = left > 0.5 ? '#2fd46d' : left > 0.25 ? '#ffcc33' : '#ff3b4d';
       }
+      const temps = t.core?.map((core, i) => .8 * core + .2 * t.surface[i]);
+      this.thermalEl.classList.toggle('show', !!temps);
+      if (temps) temps.forEach((temp, i) => {
+        const label = ['ПЛ','ПП','ЗЛ','ЗП'][i];
+        setText(this.wheelTemps[i], `${label} ${Math.round(temp)}°`);
+        this.wheelTemps[i].className = temp < C.tOpt - 12 ? 'cold' : temp > C.tOpt + 12 ? 'hot' : 'ready';
+      });
       const dT = t.temp - C.tOpt;
-      setText(this.tyreTemp, `${Math.round(t.temp)}°`);
+      setText(this.tyreTemp, `${Math.round(t.temp)}° · ${dT < -12 ? "ПРОГРЕВ" : dT > 12 ? "ПЕРЕГРЕВ" : "В ОКНЕ"}`);
       this.tyreTemp.className = `tt ${dT < -12 ? 'cold' : dT > 12 ? 'hot' : ''}`;
     }
+    this.damageEl.classList.toggle('show', (x.damage || 0) > .05);
+    setText(this.damageEl, `Переднее крыло · повреждение ${Math.round((x.damage || 0) * 100)}% · ремонт в боксах`);
     if (x.weather) setText(this.wxEl, `${x.weather.icon} ${x.weather.text}${x.weather.wet > 0.05 ? ` ${Math.round(x.weather.wet * 100)}%` : ''}`);
     // окно выбора шин
     const P = x.pit || {};

@@ -87,21 +87,21 @@ CARS.f1 = {
   esp: 2.6,
   tcSlide: 0.5, // строже: на выходе из поворота можно сорвать зад газом
   latDamp: 6,
-  steerLock: 0.44,
+  steerLock: 0.53, // Monaco steering rack: tight Grand Hôtel hairpin
   steerOver: 1.18,
   steerMargin: 0.055,
   steerRate: 4.2,
   steerFilter: 0.02,
   steerExpo: 1.2,
-  wallBounce: 0.28,
+  wallBounce: 0.12,
   usK: 0.0004,
   maxForce: 11500,
   gears: [23, 33, 43, 53, 63, 74, 85, 98],
-  rpm: { idle: 4000, max: 12500, shift: 12000 },
+  rpm: { idle: 4000, max: 18000, shift: 17500 },
   shiftTime: 0.03,
   boost: { name: 'ERS', time: 4.0, power: 1.21, recharge: 1 / 45, harvest: 0.22 }, // заряд — при торможении
   dims: { length: 5.6, width: 2.0, height: 0.95, track: 1.62, wheelR: 0.36, wheelW: 0.38, eye: 1.3, hood: -0.35, cgZ: -0.3 },
-  sound: { cylinders: 6, base: 1, character: 'whine' },
+  sound: { cylinders: 8, base: 1, character: 'whine' },
 };
 
 export const CLASS_IDS = Object.keys(CARS);

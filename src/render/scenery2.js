@@ -4,6 +4,7 @@
 //  - каньон (Desert Canyon): месы и останцы с красными слоями, скальные стены вдоль каньона,
 //    каменная арка над трассой, кактусы, валуны;
 //  - Япония (Sakura Touge): цветущая сакура, бамбуковые рощи, тории над дорогой, каменные фонари.
+import { buildMonaco } from './monaco.js';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rng } from '../util/rng.js';
@@ -685,6 +686,7 @@ export function buildExtraScenery(track, env, grid, heightAt, seaAt, density) {
   let blink = null;
   const night = env.time === 'night';
   for (const [key, fn] of [
+    ['monaco', buildMonaco],
     ['port', buildPort],
     ['canyon', buildCanyon],
     ['japan', buildJapan],

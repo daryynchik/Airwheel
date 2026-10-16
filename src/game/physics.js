@@ -111,7 +111,9 @@ export function createCar(spec, track, { s = 0, d = 0 } = {}) {
     gripPenaltyT: 0,
     // шины (tires.js выставляет множитель сцепления по составу, износу и температуре)
     tireGrip: 1,
+    damage: 0, // front-wing aero loss, repaired at a pit stop
     tire: null,
+    aids: true,
     // визуальное
     roll: 0,
     pitch: 0,
@@ -205,7 +207,9 @@ export function stepCar(car, input, dt, track, opts = {}) {
   }
   const assist = opts.assist ?? 0.65;
   const wet = opts.wetness ?? 0;
+  const driverAids = C.id !== 'f1' || assist > 0;
   const frozen = !!opts.frozen;
+  car.aids = driverAids;
   const m = C.mass;
   const L = C.wheelbase;
   const a = L * (1 - C.weightFront); // от ЦТ до передней оси
@@ -250,6 +254,7 @@ export function stepCar(car, input, dt, track, opts = {}) {
     const id = track.surfaceAt(iw, dw);
     const S = surfaceOf(id);
     const wh = car.wheels[w];
+    wh.locked = false;
     wh.surface = id;
     wh.S = S;
     car.surfaces[w] = id;
@@ -353,7 +358,7 @@ export function stepCar(car, input, dt, track, opts = {}) {
     const u = car.u, v = car.v, r = car.r;
     const speed = Math.abs(u);
     const dir = Math.sign(u) || 1;
-    const down = C.downforce * u * u;
+    const down = C.downforce * u * u * (1 - (car.damage || 0) * 0.45);
     const delta = car.delta;
 
     // нагрузки по колёсам
@@ -367,11 +372,12 @@ export function stepCar(car, input, dt, track, opts = {}) {
     FZ[3] = sR + dLong / 2 + latT * (1 - C.rollFront);
     for (let w = 0; w < 4; w++) FZ[w] = Math.max(FZ[w], 0.06 * (w < 2 ? sF : sR));
     const avgF = (FZ[0] + FZ[1]) / 2, avgR = (FZ[2] + FZ[3]) / 2;
+    const thermalAvg = car.tire ? Math.max(0.5, car.wheels.reduce((sum, w) => sum + (w.tempGrip ?? 1), 0) / 4) : 1;
     for (let w = 0; w < 4; w++) {
       const avg = w < 2 ? avgF : avgR;
       // чувствительность к нагрузке: перегруженное колесо держит хуже на единицу веса
       const ls = clamp(1 - C.loadSens * (FZ[w] / avg - 1), 0.72, 1.15);
-      MU[w] = C.grip * C.gripPhys * (w >= 2 ? C.rearGrip : 1) * car.wheels[w].grip * gripMul * ls;
+      MU[w] = C.grip * C.gripPhys * (w >= 2 ? C.rearGrip : 1) * car.wheels[w].grip * gripMul * ls * ((car.wheels[w].tempGrip ?? 1) / thermalAvg);
       CAP[w] = MU[w] * FZ[w];
     }
 
@@ -384,17 +390,18 @@ export function stepCar(car, input, dt, track, opts = {}) {
       const avail3 = Math.sqrt(Math.max(0, CAP[3] * CAP[3] - (1.15 * car.wheels[3].fy) ** 2));
       const slide = rearSlipExcess(car, C) / (C.tyre.peakR * 0.5);
       const cut = car.reverse ? 1 : clamp(1 - slide * (C.tcSlide + assist * 0.6), 0.15, 1);
-      const lim = (avail2 + avail3) * 0.94 * cut;
+      const lim = driverAids ? (avail2 + avail3) * 0.94 * cut : CAP[2] + CAP[3];
       let d = demand;
       if (Math.abs(d) > lim) {
         tcCut = Math.max(tcCut, Math.abs(d) / Math.max(lim, 1) - 1);
         d = Math.sign(d) * lim;
-        car.tc = true;
+        car.tc = driverAids;
       }
       // самоблок: что не передало одно колесо, передаёт другое
-      let f2 = clamp(d / 2, -avail2, avail2);
-      let f3 = clamp(d - f2, -avail3, avail3);
-      f2 = clamp(d - f3, -avail2, avail2);
+      const cap2 = driverAids ? avail2 : CAP[2], cap3 = driverAids ? avail3 : CAP[3];
+      let f2 = clamp(d / 2, -cap2, cap2);
+      let f3 = clamp(d - f2, -cap3, cap3);
+      f2 = clamp(d - f3, -cap2, cap2);
       fx[2] = f2;
       fx[3] = f3;
     }
@@ -406,8 +413,10 @@ export function stepCar(car, input, dt, track, opts = {}) {
         const lat = Math.min(1, Math.abs(fyPrev) / Math.max(CAP[w], 1));
         const want = car.brake * C.brake * CAP[w] * (w < 2 ? 1 : C.brakeRear * (1 - 0.6 * lat * lat));
         const avail = 0.93 * Math.sqrt(Math.max(0, CAP[w] * CAP[w] - (1.08 * fyPrev) ** 2));
-        const fb = Math.min(want, avail);
-        if (want > avail * 1.02 && speed > 3) car.abs = true;
+        const requested = driverAids ? want : car.brake * 1.25 * CAP[w] * (w < 2 ? 1 : C.brakeRear);
+        const fb = Math.min(requested, driverAids ? avail : CAP[w]);
+        car.wheels[w].locked = !driverAids && requested >= CAP[w] && speed > 3;
+        if (driverAids && want > avail * 1.02 && speed > 3) car.abs = true;
         fx[w] -= fb * dir;
       }
     }
@@ -454,7 +463,8 @@ export function stepCar(car, input, dt, track, opts = {}) {
     const grade = track.grade[ci] * Math.cos(wrapAngle(car.psi - track.heading[ci]));
     const bank = track.bank[ci];
     const bankLat = m * G * Math.sin(bank) * (Math.cos(car.psi) * nx - Math.sin(car.psi) * nz);
-    Fx += -fDrag - fRoll - m * G * grade;
+    const engineBrake = C.id === 'f1' && !car.reverse ? (1 - car.throttle) * Math.min(900, speed * 18) : 0;
+    Fx += -fDrag - fRoll - m * G * grade - engineBrake * dir;
     Fy += bankLat;
 
     // ESP (при помощи): машину закручивает сильнее, чем просит руль, — момент против
@@ -669,6 +679,7 @@ function collideWalls(car, track, events, dt) {
       car.shake = Math.max(car.shake, Math.min(1, 0.12 + vn * 0.045));
       // короткий штраф: 0.5 с пониженного сцепления
       if (vn > 3) car.gripPenaltyT = 0.5 * smoothstep(3, 10, vn);
+      if (C.id === 'f1' && vn > 8) car.damage = clamp((car.damage || 0) + (vn - 8) / 100, 0, 1);
       events.push({ type: 'wall', speed: vn, side, total: speed, strength });
     }
     car.u = vx * sinP + vz * cosP;

@@ -1,3 +1,4 @@
+import { MARINA } from './monaco.js';
 // Рельеф вокруг трассы: у дороги — ровные зоны вылета на её высоте, дальше — холмы и склоны.
 // Высота вдали — гладкое среднее высот трассы (IDW) + шум + подъём к краям (горная долина).
 // Возвращает меш и функцию heightAt(x, z) для расстановки окружения.
@@ -129,7 +130,14 @@ export function buildTerrain(track, env, grid, { cell = 10 } = {}) {
     let maxAlong = -Infinity;
     for (let i = 0; i < track.n; i++) maxAlong = Math.max(maxAlong, track.x[i] * dx + track.z[i] * dz);
     const shore = maxAlong + (sea.shore ?? 30);
-    seaAt = (x, z) => smoothstep(shore, shore + 25, x * dx + z * dz);
+    seaAt = (x, z) => {
+      let inside = false;
+      if (env.scenery?.monaco) for (let i=0,j=MARINA.length-1;i<MARINA.length;j=i++) {
+        const [xi,zi]=MARINA[i], [xj,zj]=MARINA[j];
+        if ((zi>z)!==(zj>z) && x<(xj-xi)*(z-zi)/(zj-zi)+xi) inside=!inside;
+      }
+      return inside ? 1 : smoothstep(shore, shore + 25, x * dx + z * dz);
+    };
     sea.shoreAlong = shore;
   }
   const near = {};

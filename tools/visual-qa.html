@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+  <style>
+    body {
+      margin: 0;
+      background: #18252d;
+    }
+    #label {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: white;
+      font: 16px system-ui;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+  <div id="label">AirWheel · pit crew / F1 visual check</div>
+  <script type="module">
+    import * as T from "three";
+    import { Track } from "/src/game/track.js";
+    import M from "/src/game/tracks/monaco.js";
+    import { CARS } from "/src/game/cars.js";
+    import {
+      buildCarModel,
+      preloadCars,
+      LIVERIES,
+    } from "/src/render/carModel.js";
+    import { buildPitLane } from "/src/render/pitlane.js";
+    const tr = new Track(M),
+      box = 5,
+      L = tr.pit,
+      s = L.boxS(box),
+      pt = tr.pointAt(s, L.side * L.workD(s)),
+      heading = tr.headingAt(s);
+    const scene = new T.Scene();
+    scene.background = new T.Color(0x9cb9cc);
+    scene.fog = new T.Fog(0x9cb9cc, 100, 400);
+    const renderer = new T.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(1);
+    renderer.toneMapping = T.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1;
+    renderer.shadowMap.enabled = true;
+    document.body.append(renderer.domElement);
+    scene.add(new T.HemisphereLight(0xdceeff, 0x736653, 2));
+    const sun = new T.DirectionalLight(0xffeed3, 3);
+    sun.position.set(pt.x + 12, pt.y + 30, pt.z + 10);
+    scene.add(sun);
+    const plane = new T.Mesh(
+      new T.PlaneGeometry(1500, 1500),
+      new T.MeshStandardMaterial({ color: 0x606a6e, roughness: 0.9 }),
+    );
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.y = pt.y - 0.1;
+    scene.add(plane);
+    const pit = buildPitLane(tr, M.env);
+    scene.add(pit.group);
+    pit.setBoxes(Array(12).fill("#d82c37"), box);
+    await preloadCars(["f1"]);
+    const model = buildCarModel(CARS.f1, {
+      livery: LIVERIES[1],
+      player: true,
+      number: 16,
+    });
+    scene.add(model.root);
+    const car = {
+      x: pt.x,
+      y: pt.y,
+      z: pt.z,
+      psi: heading,
+      u: 0,
+      v: 0,
+      spec: CARS.f1,
+      tire: { compound: "soft" },
+      pitProgress: -1,
+    };
+    const cam = new T.PerspectiveCamera(
+      45,
+      innerWidth / innerHeight,
+      0.1,
+      1500,
+    );
+    const rot = (x, z) => [
+      pt.x + x * Math.cos(heading) + z * Math.sin(heading),
+      pt.z - x * Math.sin(heading) + z * Math.cos(heading),
+    ];
+    const a = rot(-10, 10);
+    cam.position.set(a[0], pt.y + 5.2, a[1]);
+    cam.lookAt(pt.x, pt.y + 0.55, pt.z);
+    window.qa = { car, model, pit, scene, cam, renderer, progress: 0.5 };
+    let last = performance.now();
+    function frame(t) {
+      const dt = Math.min(0.05, (t - last) / 1000);
+      last = t;
+      const progress = window.qa.progress;
+      car.pitProgress = progress;
+      car.lift = progress > 0 && progress < 1 ? 1 : 0;
+      pit.update(dt, {
+        service: [{ box, active: true, progress, car }],
+        red: progress < 1,
+      });
+      model.update(car, 1, dt);
+      renderer.render(scene, cam);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  </script>
+</html>

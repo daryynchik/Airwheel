@@ -5,9 +5,9 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Geo, strip, edgeY, roadQuad, decalMaterial } from './trackMesh.js';
 import * as TX from './textures.js';
+import { buildPitCrew } from './pitCrew.js';
 import { patchWet } from './rain.js';
 
-const CREW = 6; // механиков на бокс
 const up = new THREE.Vector3(0, 1, 0);
 
 // Модуль бокса (локально: x — вдоль трассы, z — от пит-лейна вглубь, y — вверх; фасад при z = 0).
@@ -24,18 +24,6 @@ function garageModule(w, depth, h) {
   add(new THREE.BoxGeometry(0.18, 0.18, 3.2), -w / 2 + 0.3, h - 0.3, -1.6); // стойки навеса
   const g = mergeGeometries(parts.map((p) => p.toNonIndexed()));
   parts.forEach((p) => p.dispose());
-  return g;
-}
-
-function crewGeo() {
-  const body = new THREE.CylinderGeometry(0.2, 0.22, 1.05, 8);
-  body.translate(0, 0.95, 0);
-  const legs = new THREE.CylinderGeometry(0.17, 0.15, 0.5, 6);
-  legs.translate(0, 0.25, 0);
-  const head = new THREE.SphereGeometry(0.17, 10, 8);
-  head.translate(0, 1.66, 0);
-  const g = mergeGeometries([body.toNonIndexed(), legs.toNonIndexed(), head.toNonIndexed()]);
-  [body, legs, head].forEach((x) => x.dispose());
   return g;
 }
 
@@ -180,41 +168,17 @@ export function buildPitLane(track, env = {}) {
     return l;
   });
 
-  // --- механики ---
-  const crew = new THREE.InstancedMesh(crewGeo(), new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }), CREW * L.boxCount);
-  crew.castShadow = true;
-  const crewHome = [];
-  for (let k = 0; k < L.boxCount; k++) {
-    for (let c = 0; c < CREW; c++) {
-      const u = L.boxRel(k) - 3 + (c % 3) * 3;
-      const dd = inner + 12.6 + Math.floor(c / 3) * 0.9;
-      crewHome.push({ u, d: side * dd });
-    }
-  }
-  const crewState = crewHome.map((h) => ({ ...h, cu: h.u, cd: h.d }));
+  const articulatedCrew = buildPitCrew(track, L);
+  group.add(articulatedCrew.group);
   const col = new THREE.Color();
-  const setCrewColors = (colors = []) => {
-    for (let k = 0; k < L.boxCount; k++) for (let c = 0; c < CREW; c++) crew.setColorAt(k * CREW + c, col.set(colors[k] || '#3a4150'));
-    if (crew.instanceColor) crew.instanceColor.needsUpdate = true;
-  };
-  setCrewColors();
-  group.add(crew);
+  const setCrewColors = (colors) => articulatedCrew.setColors(colors);
+  setCrewColors([]);
 
   const lights = frames.filter((_, j) => j % 3 === 1).map((f) => {
     const i = track.index(f.s);
     const pt = track.pointAt(f.s, side * (track.hw[i] + outer - 2.2));
     return { x: pt.x, y: edgeY(track, i, side * track.hw[i]) + H - 0.6, z: pt.z, s: f.s, color: 0xfff1dd, power: 0.8 };
   });
-
-  // работа механика c у машины: колёса и домкраты (локально относительно бокса)
-  const SERVICE = [
-    [-1.6, 1.3],
-    [1.6, 1.3],
-    [-1.6, -1.3],
-    [1.6, -1.3],
-    [3.2, 0],
-    [-3.2, 0],
-  ];
 
   return {
     group,
@@ -237,31 +201,7 @@ export function buildPitLane(track, env = {}) {
     update(dt, { service = [], red = false } = {}) {
       lampMat[0].color.set(red ? new THREE.Color(5, 0.2, 0.1) : 0x220404);
       lampMat[1].color.set(red ? 0x043004 : new THREE.Color(0.2, 4, 0.4));
-      const busy = new Map(service.filter((x) => x.active).map((x) => [x.box, x]));
-      const k = Math.min(1, dt * 6);
-      for (let b = 0; b < L.boxCount; b++) {
-        const sv = busy.get(b);
-        for (let c = 0; c < CREW; c++) {
-          const st = crewState[b * CREW + c];
-          let tu = st.u, td = st.d;
-          if (sv) {
-            const [lu2, ld] = SERVICE[c];
-            tu = L.boxRel(b) + lu2;
-            td = side * L.workD(at(L.boxRel(b))) + side * ld;
-          }
-          st.cu += (tu - st.cu) * k;
-          st.cd += (td - st.cd) * k;
-          const s = at(st.cu);
-          const i = track.index(s);
-          const pt = track.pointAt(s, st.cd);
-          const bob = sv ? Math.abs(Math.sin(performance.now() / 90 + c)) * 0.05 : 0;
-          q.setFromAxisAngle(up, track.headingAt(s) + (sv ? (SERVICE[c][1] > 0 ? -1 : 1) * side * Math.PI * 0.5 : side > 0 ? -Math.PI / 2 : Math.PI / 2));
-          m.compose(p.set(pt.x, edgeY(track, i, side * track.hw[i]) + bob, pt.z), q, one);
-          crew.setMatrixAt(b * CREW + c, m);
-        }
-      }
-      crew.instanceMatrix.needsUpdate = true;
-      crew.computeBoundingSphere();
+      articulatedCrew.update(dt, service);
     },
   };
 }

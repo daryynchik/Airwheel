@@ -6,7 +6,7 @@ import { createBots } from '../game/bots.js';
 
 export class NetRaceSession extends RaceSession {
   constructor(opts) {
-    super(opts);
+    super({ ...opts, formation: false });
     this.isHost = !!opts.isHost;
     this.waiting = false;
   }
